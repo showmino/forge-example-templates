@@ -1,0 +1,25 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      FORGE_VERSION: 0.29.0
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the forge CLI
+        run: |
+          gh release download "v$FORGE_VERSION" -R showmino/forge -D "$RUNNER_TEMP" \
+            -p "forge_${FORGE_VERSION}_linux_amd64.tar.gz" -p checksums.txt
+          cd "$RUNNER_TEMP"
+          sha256sum --check --ignore-missing checksums.txt
+          tar -xzf "forge_${FORGE_VERSION}_linux_amd64.tar.gz" forge
+      - run: '"$RUNNER_TEMP/forge" template lint'

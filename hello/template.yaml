@@ -1,0 +1,28 @@
+apiVersion: forge.dev/v1
+kind: Template
+name: hello
+title: Hello web service
+description: A small Go web service with CI on GitHub-hosted runners, images on ghcr.io and deploys through Forge
+tags: [go, example]
+# {% %} because GitHub Actions uses ${{ }}.
+delimiters: ["{%", "%}"]
+parameters:
+  - name: port
+    type: int
+    default: 8080
+    min: 1024
+    max: 65535
+    description: Port the server listens on when PORT is not set
+  - name: greeting
+    type: string
+    default: Hello
+    pattern: '^[A-Za-z][A-Za-z ,!.-]{0,39}$'
+    description: The first word of the page the service answers with
+  # Set this default to your Forge's address when you copy the template, so
+  # every new service's CI can reach Forge.
+  - name: forgeApi
+    type: string
+    default: ""
+    pattern: '^(https?://[A-Za-z0-9.-]+(:[0-9]+)?)?$'
+    description: Your Forge's address, which the service's CI deploys through
+options: [replicas, resources, env]

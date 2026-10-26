@@ -1,0 +1,78 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The Forge API, for the deploy job. The organization variable FORGE_API_URL
+  # wins when GitHub passes it (on GitHub Free, private repositories get no
+  # organization variables), then the address the template was given.
+  FORGE_API_URL: ${{ vars.FORGE_API_URL || '{% .Params.forgeApi %}' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  # Pushes ghcr.io/<owner>/<service>:<commit>, the image Forge deploys for that
+  # commit. GITHUB_TOKEN may push it because the image names this repository
+  # (the label in the Dockerfile).
+  image:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          image=ghcr.io/{% .Repo.Owner | lower %}/{% .Service.Name %}:${GITHUB_SHA::7}
+          docker build -t "$image" .
+          docker push "$image"
+
+  # Deploys main to staging through Forge. The job logs in with its GitHub
+  # OIDC token, which only lets it deploy this service to staging, at this
+  # commit.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: forge-deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the forge CLI from the Forge API
+        run: |
+          if [ -z "$FORGE_API_URL" ]; then
+            echo "::error::set the organization variable FORGE_API_URL, or the template parameter forgeApi, to your Forge's address (for example https://forge.example.com)"
+            exit 1
+          fi
+          url="$FORGE_API_URL/cli/forge-linux-amd64"
+          echo "downloading $url"
+          curl -fsS --retry 3 --max-time 120 -o "$RUNNER_TEMP/forge" "$url"
+          chmod +x "$RUNNER_TEMP/forge"
+          "$RUNNER_TEMP/forge" version
+      - name: Deploy to staging
+        run: '"$RUNNER_TEMP/forge" deploy start --env staging'

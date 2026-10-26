@@ -1,0 +1,16 @@
+# Forge service manifest. See 'forge init --help'.
+apiVersion: forge.dev/v1
+service:
+  name: {% .Service.Name %}
+  team: {% .Service.Team %}
+{%- if .Service.Owners %}
+  owners:
+{%- range .Service.Owners %}
+    - {% . %}
+{%- end %}
+{%- end %}
+  lifecycle: experimental
+  repo: {% .Repo.URL %}
+run:
+  port: {% .Params.port %}
+  health: /healthz
